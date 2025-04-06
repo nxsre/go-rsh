@@ -65,7 +65,7 @@ func (s *session) start() error {
 				io.Copy(stdStreamWriter{s.stream}, s.ptmx)
 			}
 
-			s.stream.Send(&pb.Output{ExitCode: int32(exitCode), Status: 1})
+			s.stream.Send(&pb.Output{ExitCode: int32(exitCode), Exited: true})
 			return nil
 
 		case err := <-s.errC:
@@ -98,7 +98,7 @@ func (s *session) start() error {
 					if err := s.cmd.Start(); err != nil {
 						if ee, ok := err.(*exec.Error); ok && ee.Err == exec.ErrNotFound {
 							// 命令本身的错误不返回 error，通过 output 传递
-							return s.stream.Send(&pb.Output{ExitCode: 127, Status: 1, Stderr: []byte(ee.Error())})
+							return s.stream.Send(&pb.Output{ExitCode: 127, Exited: true, Stderr: []byte(ee.Error())})
 						}
 						return err
 					}

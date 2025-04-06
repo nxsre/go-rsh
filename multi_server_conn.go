@@ -3,7 +3,6 @@ package rsh
 import (
 	"context"
 	"fmt"
-	"github.com/asaskevich/govalidator"
 	"github.com/avast/retry-go"
 	"github.com/jhump/grpctunnel"
 	"github.com/jhump/grpctunnel/tunnelpb"
@@ -19,17 +18,17 @@ import (
 )
 
 // Example Usage
-func xx() {
-	//ctx := context.Background()
-	//
-	//addrs := []string{"hostA:20023", "hostB:20023", "hostC:20023"}
-	//mgr := NewConnectionManager()
-	//for _, addr := range addrs {
-	//	if err := mgr.Call(ctx, addr, doThing); err != nil {
-	//		// handle
-	//	}
-	//}
-}
+/*func fn() {
+	ctx := context.Background()
+
+	addrs := []string{"hostA:20023", "hostB:20023", "hostC:20023"}
+	mgr := NewConnectionManager()
+	for _, addr := range addrs {
+		if err := mgr.Call(ctx, addr, doThing); err != nil {
+			// handle
+		}
+	}
+}*/
 
 func doThing(ctx context.Context, conn *Connection) error {
 	// 注册反向隧道，对 grpc server 端提供服务.
@@ -58,6 +57,9 @@ func doThing(ctx context.Context, conn *Connection) error {
 		retry.MaxDelay(5*time.Second),
 		retry.MaxJitter(3*time.Second),
 		retry.DelayType(retry.FixedDelay),
+		retry.OnRetry(func(n uint, err error) {
+			log.Println("retry", n, err)
+		}),
 	)
 	return err
 }
@@ -134,15 +136,13 @@ func (m *ConnectionManager) Connect(ctx context.Context, address string) (*Conne
 
 func (m *ConnectionManager) newConnection(ctx context.Context, address string) (*grpc.ClientConn, error) {
 	creds := credentials.NewTLS(m.client.tlsconfig)
-	_ = creds
-
 	// 判断是否使用 tls
 	dsn := dsnparser.Parse(address)
 	var (
 		cc  *grpc.ClientConn
 		err error
 	)
-	log.Println("地址是否有效", dsn.GetScheme(), address, govalidator.IsURL(address))
+	log.Println("地址是否有效", fmt.Sprintf("%s:%s", dsn.GetHost(), dsn.GetPort()), address)
 
 	switch dsn.GetScheme() {
 	case "http", "tcp", "":
@@ -151,16 +151,13 @@ func (m *ConnectionManager) newConnection(ctx context.Context, address string) (
 			fmt.Sprintf("%s:%s", dsn.GetHost(), dsn.GetPort()),
 			// 用 kitex 做 grpcproxy 时不支持客户端证书，gonet 模式启动 kitex 服务可以支持 tls，但是客户端关闭就会 panic
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			//grpc.WithContextDialer(m.server.Dialer()),
 		)
 	case "tls", "https":
 		cc, err = grpc.NewClient(
 			// 协议最好使用passthrough，要不然默认的使用的是 unix
 			fmt.Sprintf("%s:%s", dsn.GetHost(), dsn.GetPort()),
 			grpc.WithTransportCredentials(creds),
-			//grpc.WithContextDialer(m.server.Dialer()),
 		)
-		log.Println(cc, err)
 	}
 
 	return cc, err

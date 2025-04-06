@@ -162,8 +162,8 @@ func (c *Client) readStream(stream pb.RemoteShell_SessionClient) (*int, error) {
 				return nil, err
 			}
 
-			// Status = 1 为命令已结束
-			if out.Status == 1 {
+			// Exited = true 为命令已结束
+			if out.Exited {
 				var exitCode int = int(out.ExitCode)
 				return &exitCode, nil
 			}

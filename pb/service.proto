@@ -22,7 +22,7 @@ message Output {
   bytes Stdout = 1;
   bytes Stderr = 2;
   int32 ExitCode = 3;
-  int32 Status = 4; // 用于判断命令是否已结束
+  bool Exited = 4; // 用于判断命令是否已结束, 因 ExitCode 为 0 是可能是 go 中的 int32 0值，也可能是命令已结束
 }
 
 

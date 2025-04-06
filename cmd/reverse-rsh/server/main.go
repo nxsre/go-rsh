@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/mattn/go-shellwords"
+	"github.com/nxsre/go-rsh"
 	"github.com/nxsre/go-rsh/pb"
 	"io"
 	"log"
@@ -20,8 +21,8 @@ var (
 	port   = flag.Uint("p", 22222, "server port")
 	addr   = flag.String("a", "127.0.0.1", "server address")
 	cacert = flag.String("ca", "./certs/ca.pem", "ca certificate file")
-	cert   = flag.String("cert", "./certs/etcd.pem", "server certificate file")
-	key    = flag.String("key", "./certs/etcd-key.pem", "server key file")
+	cert   = flag.String("cert", "./certs/server.pem", "server certificate file")
+	key    = flag.String("key", "./certs/server-key.pem", "server key file")
 )
 
 func parseArgs() {
@@ -142,11 +143,13 @@ func NewWeb(server *rsh.ReverseServer) gin.HandlerFunc {
 			go rsh.WriteStream(stream, inc, sigc)
 		}
 
-		outer, w := io.Pipe()
-		go func() {
-			io.Copy(c.Writer, outer)
-		}()
-		exitCode, err := rsh.ReadStream(stream, w)
+		stdoutR, stdoutW := io.Pipe()
+		stderrR, stderrW := io.Pipe()
+		// 合并 stdout stderr 到 c.Writer
+		go io.Copy(c.Writer, stderrR)
+		go io.Copy(c.Writer, stdoutR)
+
+		exitCode, err := rsh.ReadStream(stream, stdoutW, stderrW)
 		if exitCode != nil {
 			fmt.Printf("\n状态码: %v err: %v\n", *exitCode, err)
 		}

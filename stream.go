@@ -17,6 +17,7 @@ func ReadStream(stream pb.RemoteShell_SessionClient, stdout, stderr io.WriteClos
 			out, err := stream.Recv()
 			var exitCode int
 			if out != nil {
+				log.Println("Done", out.Stdout)
 				stdout.Write(out.Stdout)
 				stderr.Write(out.Stderr)
 				exitCode = int(out.ExitCode)
@@ -42,10 +43,9 @@ func ReadStream(stream pb.RemoteShell_SessionClient, stdout, stderr io.WriteClos
 				log.Print("Server returned err:: ", err)
 				return nil, err
 			}
-
-			stdout.Write(out.Stdout)
+			log.Println(stdout.Write(out.Stdout))
 			stderr.Write(out.Stderr)
-			if out.Status == 1 {
+			if out.Exited {
 				var exitCode int = int(out.ExitCode)
 				return &exitCode, err
 			}
