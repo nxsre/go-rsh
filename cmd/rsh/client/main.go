@@ -3,10 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/nxsre/go-rsh"
 	"log"
 	"os"
-
-	"github.com/ibice/go-rsh"
 )
 
 var (

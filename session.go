@@ -3,7 +3,7 @@ package rsh
 import (
 	"context"
 	"fmt"
-	"github.com/ibice/go-rsh/pb"
+	"github.com/nxsre/go-rsh/pb"
 	"io"
 	"log"
 	"os"
@@ -20,8 +20,10 @@ type session struct {
 	defaultCommand string
 	defaultArgs    []string
 
-	cmd  *exec.Cmd
-	ptmx *os.File
+	cmd     *exec.Cmd
+	ptmx    *os.File
+	errPtmx *os.File // 分离 stdout, pty 包默认为合并 stderr 和 stdout 到同一个 ptmx
+
 	lock sync.Mutex
 
 	terminal  bool // 当前 session 是否打开终端
@@ -57,7 +59,8 @@ func (s *session) start() error {
 
 			if s.terminal {
 				// Gracefully close pty to send all output before exiting.
-				io.Copy(streamWriter{s.stream}, s.ptmx)
+				go io.Copy(errStreamWriter{s.stream}, s.errPtmx)
+				io.Copy(stdStreamWriter{s.stream}, s.ptmx)
 				s.ptmx.Close()
 			}
 
@@ -68,11 +71,8 @@ func (s *session) start() error {
 			return err
 
 		case in := <-s.streamInC:
-			log.Printf("DEBUG xx22xx, %v %v cmd: %s, %v", in.Terminal, in.Start, in.Command, in.Args)
-
 			if in.Start {
 				s.terminal = in.Terminal
-				log.Println("DDDDDD", s.terminal, in.Terminal)
 				if s.terminal {
 					log.Println("DEBUG", "shell session use terminal")
 					if err := s.startCommand(s.stream.Context(), in.Command, in.Args); err != nil {
@@ -83,20 +83,21 @@ func (s *session) start() error {
 
 					go s.notifyOnProcessExit()
 
-					go io.Copy(streamWriter{s.stream}, s.ptmx)
+					go io.Copy(stdStreamWriter{s.stream}, s.ptmx)
+					go io.Copy(errStreamWriter{s.stream}, s.errPtmx)
 					continue
 				} else {
 					// 不需要终端时直接执行命令
 					log.Printf("DEBUG shell session no terminal, cmd: %s, %v", in.Command, in.Args)
 					s.cmd = exec.CommandContext(s.stream.Context(), in.Command, in.Args...)
-					stream := streamWriter{s.stream}
-					s.cmd.Stdout = stream
-					s.cmd.Stderr = stream
+
+					s.cmd.Stdout = stdStreamWriter{s.stream}
+					s.cmd.Stderr = errStreamWriter{s.stream}
 
 					if err := s.cmd.Start(); err != nil {
 						if ee, ok := err.(*exec.Error); ok && ee.Err == exec.ErrNotFound {
 							// 命令本身的错误不返回 error，通过 output 传递
-							return s.stream.Send(&pb.Output{ExitCode: 127, Status: 1, Bytes: []byte(ee.Error())})
+							return s.stream.Send(&pb.Output{ExitCode: 127, Status: 1, Stderr: []byte(ee.Error())})
 						}
 						return err
 					}
@@ -125,6 +126,13 @@ func (s *session) startCommand(ctx context.Context, command string, args []strin
 	log.Println("DEBUG", "Starting command", command, args)
 
 	s.cmd = exec.CommandContext(ctx, command, args...)
+	errPtmx, errTty, err := pty.Open()
+	if err != nil {
+		return fmt.Errorf("open err pty: %v", err)
+	}
+
+	s.cmd.Stderr = errTty
+	s.errPtmx = errPtmx
 
 	s.ptmx, err = pty.Start(s.cmd)
 	if err != nil {

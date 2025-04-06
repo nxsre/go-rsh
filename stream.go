@@ -1,14 +1,14 @@
 package rsh
 
 import (
-	"github.com/ibice/go-rsh/pb"
+	"github.com/nxsre/go-rsh/pb"
 	"io"
 	"log"
 	"os"
 	"syscall"
 )
 
-func ReadStream(stream pb.RemoteShell_SessionClient, outer io.WriteCloser) (*int, error) {
+func ReadStream(stream pb.RemoteShell_SessionClient, stdout, stderr io.WriteCloser) (*int, error) {
 	for {
 		select {
 		case <-stream.Context().Done():
@@ -17,7 +17,8 @@ func ReadStream(stream pb.RemoteShell_SessionClient, outer io.WriteCloser) (*int
 			out, err := stream.Recv()
 			var exitCode int
 			if out != nil {
-				outer.Write(out.Bytes)
+				stdout.Write(out.Stdout)
+				stderr.Write(out.Stderr)
 				exitCode = int(out.ExitCode)
 			}
 
@@ -42,7 +43,8 @@ func ReadStream(stream pb.RemoteShell_SessionClient, outer io.WriteCloser) (*int
 				return nil, err
 			}
 
-			outer.Write(out.Bytes)
+			stdout.Write(out.Stdout)
+			stderr.Write(out.Stderr)
 			if out.Status == 1 {
 				var exitCode int = int(out.ExitCode)
 				return &exitCode, err

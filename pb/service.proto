@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 
-option go_package = "github.com/ibice/go-rsh/pb;pb";
+option go_package = "github.com/nxsre/go-rsh/pb;pb";
 
 package rsh;
 
@@ -19,9 +19,10 @@ message Input {
 }
 
 message Output {
-  bytes Bytes = 1;
-  int32 ExitCode = 2;
-  int32 Status = 3; // 用于判断命令是否已结束
+  bytes Stdout = 1;
+  bytes Stderr = 2;
+  int32 ExitCode = 3;
+  int32 Status = 4; // 用于判断命令是否已结束
 }
 
 

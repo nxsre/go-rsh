@@ -1,4 +1,4 @@
-module github.com/ibice/go-rsh
+module github.com/nxsre/go-rsh
 
 go 1.23.0
 

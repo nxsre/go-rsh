@@ -3,7 +3,7 @@ package rsh
 import (
 	"context"
 	"fmt"
-	"github.com/ibice/go-rsh/pb"
+	"github.com/nxsre/go-rsh/pb"
 	"io"
 	"log"
 	"os"
@@ -168,7 +168,8 @@ func (c *Client) readStream(stream pb.RemoteShell_SessionClient) (*int, error) {
 				return &exitCode, nil
 			}
 
-			os.Stdout.Write(out.Bytes)
+			os.Stdout.Write(out.Stdout)
+			os.Stderr.Write(out.Stderr)
 		}
 	}
 }

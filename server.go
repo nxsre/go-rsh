@@ -2,7 +2,7 @@ package rsh
 
 import (
 	"fmt"
-	"github.com/ibice/go-rsh/pb"
+	"github.com/nxsre/go-rsh/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
