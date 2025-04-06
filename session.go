@@ -56,12 +56,13 @@ func (s *session) start() error {
 
 		case exitCode := <-s.cmdExitC:
 			log.Println("DEBUG", "Command exited with code", exitCode)
+			s.ptmx.Close()
+			s.errPtmx.Close()
 
 			if s.terminal {
 				// Gracefully close pty to send all output before exiting.
 				go io.Copy(errStreamWriter{s.stream}, s.errPtmx)
 				io.Copy(stdStreamWriter{s.stream}, s.ptmx)
-				s.ptmx.Close()
 			}
 
 			s.stream.Send(&pb.Output{ExitCode: int32(exitCode), Status: 1})
@@ -126,6 +127,7 @@ func (s *session) startCommand(ctx context.Context, command string, args []strin
 	log.Println("DEBUG", "Starting command", command, args)
 
 	s.cmd = exec.CommandContext(ctx, command, args...)
+	// 分离 stdout 和 stderr (终端交互模式似乎必要分离 out 和 err，非终端模式执行命令有必要分离，用来在客户端重定向正缺输出和异常输出)
 	errPtmx, errTty, err := pty.Open()
 	if err != nil {
 		return fmt.Errorf("open err pty: %v", err)
@@ -134,9 +136,27 @@ func (s *session) startCommand(ctx context.Context, command string, args []strin
 	s.cmd.Stderr = errTty
 	s.errPtmx = errPtmx
 
-	s.ptmx, err = pty.Start(s.cmd)
+	ptmx, tty, err := pty.Open()
 	if err != nil {
-		return fmt.Errorf("start pty: %v", err)
+		return fmt.Errorf("open std pty: %v", err)
+	}
+	s.cmd.Stdin = tty
+	s.cmd.Stdout = tty
+	//s.cmd.Stderr = tty
+	s.ptmx = ptmx
+
+	if s.cmd.SysProcAttr == nil {
+		s.cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	// 不加 "TERM=xterm" 客户端登录会报错: "bash: cannot set terminal process group (-1): Inappropriate ioctl for device"
+	s.cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	log.Println(s.cmd.SysProcAttr)
+	//s.cmd.SysProcAttr.Setpgid = true
+	s.cmd.SysProcAttr.Setsid = true
+	s.cmd.SysProcAttr.Setctty = true
+
+	if err := s.cmd.Start(); err != nil {
+		return fmt.Errorf("start command: %v", err)
 	}
 
 	log.Println("DEBUG", s.cmd.Process, s.cmd.ProcessState)
@@ -207,15 +227,15 @@ func (s *session) notifyOnProcessExit() {
 		s.errC <- fmt.Errorf("cmd err: %v", s.cmd.Err)
 		return
 	}
+	if s.cmd.Process != nil {
+		ps, err := s.cmd.Process.Wait()
+		log.Println("DEBUG", "Process completed", ps, err)
 
-	ps, err := s.cmd.Process.Wait()
+		if err != nil {
+			s.errC <- fmt.Errorf("cmd wait: %v", err)
+			return
+		}
 
-	log.Println("DEBUG", "Process completed", ps, err)
-
-	if err != nil {
-		s.errC <- fmt.Errorf("cmd wait: %v", err)
-		return
+		s.cmdExitC <- ps.ExitCode()
 	}
-
-	s.cmdExitC <- ps.ExitCode()
 }

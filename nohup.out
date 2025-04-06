@@ -1,0 +1,2 @@
+time="2025-04-06T18:02:52+08:00" level=info msg="[DIALER] bind to interface: bridge100"
+time="2025-04-06T18:02:52+08:00" level=info msg="[STACK] tun://utun123 <-> socks5://10.211.55.3:6666"
