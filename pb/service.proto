@@ -6,18 +6,22 @@ option go_package = "github.com/ibice/go-rsh/pb;pb";
 package rsh;
 
 service RemoteShell {
-    rpc Session (stream Input) returns (stream Output) {}
+  rpc Session (stream Input) returns (stream Output) {}
 }
 
 message Input {
-    int32 Signal = 1;
-    bytes Bytes= 2;
-    bool Start = 3;
-    string Command = 4;
-    repeated string Args = 5;
+  int32 Signal = 1;
+  bytes Bytes = 2;
+  bool Start = 3;
+  bool Terminal = 4; // 是否开启终端模式，类似 docker -t
+  string Command = 5;
+  repeated string Args = 6;
 }
 
 message Output {
-    bytes Bytes = 1;
-    int32 ExitCode = 2;
+  bytes Bytes = 1;
+  int32 ExitCode = 2;
+  int32 Status = 3; // 用于判断命令是否已结束
 }
+
+

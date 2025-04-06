@@ -3,6 +3,7 @@ package rsh
 import (
 	"context"
 	"fmt"
+	"github.com/ibice/go-rsh/pb"
 	"io"
 	"log"
 	"os"
@@ -15,8 +16,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/ibice/go-rsh/pb"
 )
 
 // Client is the remote shell client.
@@ -36,8 +35,9 @@ func NewClientInsecure(server string) *Client {
 
 // ExecOptions are the options for Exec.
 type ExecOptions struct {
-	Command string
-	Args    []string
+	Terminal bool
+	Command  string
+	Args     []string
 }
 
 // Exec executes a command in the server.
@@ -68,34 +68,37 @@ func (c *Client) ExecContext(ctx context.Context, opts *ExecOptions) (*int, erro
 	log.Println("DEBUG", "ExecOpts", opts)
 
 	err = stream.Send(&pb.Input{
-		Start:   true,
-		Command: opts.Command,
-		Args:    opts.Args,
+		Start:    true,
+		Command:  opts.Command,
+		Args:     opts.Args,
+		Terminal: opts.Terminal, // 终端交互模式
 	})
 	if err != nil {
 		return nil, fmt.Errorf("send cmd: %v", err)
 	}
 
-	var (
-		inc  = make(chan rune, 1024)
-		sigc = make(chan os.Signal, 1)
-	)
+	if opts.Terminal {
+		var (
+			inc  = make(chan rune, 1024)
+			sigc = make(chan os.Signal, 1)
+		)
 
-	signal.Notify(sigc,
-		syscall.SIGWINCH,
-		syscall.SIGHUP,
-		syscall.SIGINT,
-		syscall.SIGQUIT,
-		syscall.SIGTERM,
-	)
+		signal.Notify(sigc,
+			syscall.SIGWINCH,
+			syscall.SIGHUP,
+			syscall.SIGINT,
+			syscall.SIGQUIT,
+			syscall.SIGTERM,
+		)
 
-	go c.readTTY(stream.Context(), inc)
+		go c.readTTY(stream.Context(), inc)
 
-	defer c.restoreTTY()
+		defer c.restoreTTY()
 
-	go c.writeStream(stream, inc, sigc)
+		go c.writeStream(stream, inc, sigc)
 
-	sigc <- syscall.SIGWINCH
+		sigc <- syscall.SIGWINCH
+	}
 
 	return c.readStream(stream)
 }
@@ -159,7 +162,8 @@ func (c *Client) readStream(stream pb.RemoteShell_SessionClient) (*int, error) {
 				return nil, err
 			}
 
-			if out.ExitCode != 0 || len(out.Bytes) == 0 {
+			// Status = 1 为命令已结束
+			if out.Status == 1 {
 				var exitCode int = int(out.ExitCode)
 				return &exitCode, nil
 			}
@@ -170,7 +174,6 @@ func (c *Client) readStream(stream pb.RemoteShell_SessionClient) (*int, error) {
 }
 
 func (c *Client) writeStream(stream pb.RemoteShell_SessionClient, inc <-chan rune, sigc <-chan os.Signal) {
-
 	for {
 		select {
 		case <-stream.Context().Done():

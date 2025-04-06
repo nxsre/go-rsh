@@ -3,6 +3,7 @@ package rsh
 import (
 	"context"
 	"fmt"
+	"github.com/ibice/go-rsh/pb"
 	"io"
 	"log"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"syscall"
 
 	"github.com/creack/pty"
-	"github.com/ibice/go-rsh/pb"
 )
 
 type session struct {
@@ -24,6 +24,7 @@ type session struct {
 	ptmx *os.File
 	lock sync.Mutex
 
+	terminal  bool // 当前 session 是否打开终端
 	cmdExitC  chan int
 	errC      chan error
 	streamInC chan *pb.Input
@@ -54,28 +55,54 @@ func (s *session) start() error {
 		case exitCode := <-s.cmdExitC:
 			log.Println("DEBUG", "Command exited with code", exitCode)
 
-			// Gracefully close pty to send all output before exiting.
-			io.Copy(streamWriter{s.stream}, s.ptmx)
-			s.ptmx.Close()
+			if s.terminal {
+				// Gracefully close pty to send all output before exiting.
+				io.Copy(streamWriter{s.stream}, s.ptmx)
+				s.ptmx.Close()
+			}
 
-			s.stream.Send(&pb.Output{ExitCode: int32(exitCode)})
+			s.stream.Send(&pb.Output{ExitCode: int32(exitCode), Status: 1})
 			return nil
 
 		case err := <-s.errC:
 			return err
 
 		case in := <-s.streamInC:
+			log.Printf("DEBUG xx22xx, %v %v cmd: %s, %v", in.Terminal, in.Start, in.Command, in.Args)
+
 			if in.Start {
-				if err := s.startCommand(s.stream.Context(), in.Command, in.Args); err != nil {
-					return fmt.Errorf("start command: %v", err)
+				s.terminal = in.Terminal
+				log.Println("DDDDDD", s.terminal, in.Terminal)
+				if s.terminal {
+					log.Println("DEBUG", "shell session use terminal")
+					if err := s.startCommand(s.stream.Context(), in.Command, in.Args); err != nil {
+						return fmt.Errorf("start command: %v", err)
+					}
+
+					defer s.ptmx.Close()
+
+					go s.notifyOnProcessExit()
+
+					go io.Copy(streamWriter{s.stream}, s.ptmx)
+					continue
+				} else {
+					// 不需要终端时直接执行命令
+					log.Printf("DEBUG shell session no terminal, cmd: %s, %v", in.Command, in.Args)
+					s.cmd = exec.CommandContext(s.stream.Context(), in.Command, in.Args...)
+					stream := streamWriter{s.stream}
+					s.cmd.Stdout = stream
+					s.cmd.Stderr = stream
+
+					if err := s.cmd.Start(); err != nil {
+						if ee, ok := err.(*exec.Error); ok && ee.Err == exec.ErrNotFound {
+							// 命令本身的错误不返回 error，通过 output 传递
+							return s.stream.Send(&pb.Output{ExitCode: 127, Status: 1, Bytes: []byte(ee.Error())})
+						}
+						return err
+					}
+					go s.notifyOnProcessExit()
+					continue
 				}
-				defer s.ptmx.Close()
-
-				go s.notifyOnProcessExit()
-
-				go io.Copy(streamWriter{s.stream}, s.ptmx)
-
-				continue
 			}
 
 			if err := s.processInput(in); err != nil {
@@ -167,6 +194,11 @@ func (s *session) consumeStream() {
 
 func (s *session) notifyOnProcessExit() {
 	log.Println("DEBUG", "Waiting for process completion")
+
+	if s.cmd.Err != nil {
+		s.errC <- fmt.Errorf("cmd err: %v", s.cmd.Err)
+		return
+	}
 
 	ps, err := s.cmd.Process.Wait()
 

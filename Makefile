@@ -9,12 +9,12 @@ build: build-server build-client
 .PHONY: build-server
 build-server:
 	@mkdir -p bin
-	CGO_ENABLED=0 go build -o bin/gshd ./cmd/server
+	CGO_ENABLED=0 go build -o bin/gshd ./cmd/rsh/server
 
 .PHONY: build-client
 build-client:
 	@mkdir -p bin
-	CGO_ENABLED=0 go build -o bin/gsh ./cmd/client
+	CGO_ENABLED=0 go build -o bin/gsh ./cmd/rsh/client
 
 .PHONY: install
 install:

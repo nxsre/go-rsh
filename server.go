@@ -2,12 +2,13 @@ package rsh
 
 import (
 	"fmt"
-	"log"
-	"net"
-
 	"github.com/ibice/go-rsh/pb"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
+	"log"
+	"net"
+	"os/exec"
 )
 
 // Server is the remote shell server.
@@ -51,9 +52,14 @@ func newRSHServer(shell string) *rshServer {
 
 func (s *rshServer) Session(stream pb.RemoteShell_SessionServer) error {
 	log.Println("Opening session")
-
-	if err := newSession(stream, s.shell, nil).start(); err != nil {
-		return fmt.Errorf("session: %v", err)
+	log.Println(metadata.FromIncomingContext(stream.Context()))
+	sess := newSession(stream, s.shell, nil)
+	if err := sess.start(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			log.Println(exitErr.Stderr, exitErr.ExitCode())
+		}
+		log.Println("XXXXX---", err)
+		return err
 	}
 
 	log.Println("Session closed")
