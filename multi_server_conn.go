@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/avast/retry-go"
+	"github.com/denisbrodbeck/machineid"
+	"github.com/google/uuid"
 	"github.com/jhump/grpctunnel"
 	"github.com/jhump/grpctunnel/tunnelpb"
 	"github.com/kos-v/dsnparser"
@@ -13,6 +15,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"log"
+	"os"
 	"sync"
 	"time"
 )
@@ -24,13 +27,31 @@ import (
 	addrs := []string{"hostA:20023", "hostB:20023", "hostC:20023"}
 	mgr := NewConnectionManager()
 	for _, addr := range addrs {
-		if err := mgr.Call(ctx, addr, doThing); err != nil {
+		if err := mgr.Call(ctx, addr, tunnelRegister); err != nil {
 			// handle
 		}
 	}
 }*/
 
-func doThing(ctx context.Context, conn *Connection) error {
+// 获取唯一ID
+func GetNodeID() string {
+	if os.Getenv("NODE_ID") != "" {
+		return os.Getenv("NODE_ID")
+	}
+	hostname, err := os.Hostname()
+	if err == nil {
+		return hostname
+	}
+
+	id, err := machineid.ID()
+	if err == nil {
+		return id
+	}
+
+	return uuid.NewString()
+}
+
+func tunnelRegister(ctx context.Context, conn *Connection) error {
 	// 注册反向隧道，对 grpc server 端提供服务.
 	tunnelStub := tunnelpb.NewTunnelServiceClient(conn)
 	channelServer := grpctunnel.NewReverseTunnelServer(tunnelStub)
@@ -40,7 +61,7 @@ func doThing(ctx context.Context, conn *Connection) error {
 
 	log.Println("Starting Client")
 	// Create metadata and context.
-	md := metadata.Pairs("client-id", "big-niubi")
+	md := metadata.Pairs("client-id", GetNodeID())
 	ctx = metadata.NewOutgoingContext(context.Background(), md)
 
 	// Open the reverse tunnel and serve requests.
@@ -52,7 +73,7 @@ func doThing(ctx context.Context, conn *Connection) error {
 			}
 			return nil
 		},
-		retry.Attempts(999999),
+		retry.Attempts(0),
 		retry.Delay(2*time.Second),
 		retry.MaxDelay(5*time.Second),
 		retry.MaxJitter(3*time.Second),
@@ -65,7 +86,6 @@ func doThing(ctx context.Context, conn *Connection) error {
 }
 
 // Types
-
 type CallFn func(context.Context, *Connection) error
 
 type Connection struct {
@@ -136,6 +156,8 @@ func (m *ConnectionManager) Connect(ctx context.Context, address string) (*Conne
 
 func (m *ConnectionManager) newConnection(ctx context.Context, address string) (*grpc.ClientConn, error) {
 	creds := credentials.NewTLS(m.client.tlsconfig)
+	_ = creds
+
 	// 判断是否使用 tls
 	dsn := dsnparser.Parse(address)
 	var (
