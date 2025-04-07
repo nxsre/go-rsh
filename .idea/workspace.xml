@@ -6,15 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="40e86870-3104-4336-923e-aea84a5920e0" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/client.go" beforeDir="false" afterPath="$PROJECT_DIR$/client.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmd/reverse-rsh/client/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/reverse-rsh/client/main.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmd/reverse-rsh/server/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/reverse-rsh/server/main.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/multi_server_conn.go" beforeDir="false" afterPath="$PROJECT_DIR$/multi_server_conn.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pb/service.pb.go" beforeDir="false" afterPath="$PROJECT_DIR$/pb/service.pb.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pb/service.proto" beforeDir="false" afterPath="$PROJECT_DIR$/pb/service.proto" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/reverse_client.go" beforeDir="false" afterPath="$PROJECT_DIR$/reverse_client.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/session.go" beforeDir="false" afterPath="$PROJECT_DIR$/session.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/stream.go" beforeDir="false" afterPath="$PROJECT_DIR$/stream.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
