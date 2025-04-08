@@ -2,22 +2,16 @@ package rsh
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
-	"github.com/avast/retry-go"
 	"github.com/denisbrodbeck/machineid"
 	"github.com/google/uuid"
-	"github.com/jhump/grpctunnel"
-	"github.com/jhump/grpctunnel/tunnelpb"
 	"github.com/kos-v/dsnparser"
-	"github.com/nxsre/go-rsh/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
-	"log"
 	"os"
 	"sync"
-	"time"
 )
 
 // Example Usage
@@ -51,40 +45,6 @@ func GetNodeID() string {
 	return uuid.NewString()
 }
 
-func tunnelRegister(ctx context.Context, conn *Connection) error {
-	// 注册反向隧道，对 grpc server 端提供服务.
-	tunnelStub := tunnelpb.NewTunnelServiceClient(conn)
-	channelServer := grpctunnel.NewReverseTunnelServer(tunnelStub)
-
-	// 注册 api
-	pb.RegisterRemoteShellServer(channelServer, newRSHServer("/bin/sh"))
-
-	log.Println("Starting Client")
-	// Create metadata and context.
-	md := metadata.Pairs("client-id", GetNodeID())
-	ctx = metadata.NewOutgoingContext(context.Background(), md)
-
-	// Open the reverse tunnel and serve requests.
-	err := retry.Do(
-		func() error {
-			_, err := channelServer.Serve(ctx)
-			if err != nil {
-				return err
-			}
-			return nil
-		},
-		retry.Attempts(0),
-		retry.Delay(2*time.Second),
-		retry.MaxDelay(5*time.Second),
-		retry.MaxJitter(3*time.Second),
-		retry.DelayType(retry.FixedDelay),
-		retry.OnRetry(func(n uint, err error) {
-			log.Println("retry", n, err)
-		}),
-	)
-	return err
-}
-
 // Types
 type CallFn func(context.Context, *Connection) error
 
@@ -106,11 +66,11 @@ func (c *Connection) Close() error {
 type ConnectionManager struct {
 	mu     sync.RWMutex
 	conns  map[string]*Connection
-	client *ReverseClient
+	tlscfg *tls.Config
 }
 
-func NewConnectionManager(client *ReverseClient) *ConnectionManager {
-	return &ConnectionManager{conns: map[string]*Connection{}, client: client}
+func NewConnectionManager(tlscfg *tls.Config) *ConnectionManager {
+	return &ConnectionManager{conns: map[string]*Connection{}, tlscfg: tlscfg}
 }
 
 func (m *ConnectionManager) Call(ctx context.Context, address string, fn CallFn) error {
@@ -120,8 +80,7 @@ func (m *ConnectionManager) Call(ctx context.Context, address string, fn CallFn)
 	}
 
 	// You could have exponential retry / backoff up to N times
-	go fn(context.Background(), conn)
-	return nil
+	return fn(context.Background(), conn)
 }
 
 func (m *ConnectionManager) Connect(ctx context.Context, address string) (*Connection, error) {
@@ -155,16 +114,12 @@ func (m *ConnectionManager) Connect(ctx context.Context, address string) (*Conne
 }
 
 func (m *ConnectionManager) newConnection(ctx context.Context, address string) (*grpc.ClientConn, error) {
-	creds := credentials.NewTLS(m.client.tlsconfig)
-	_ = creds
-
 	// 判断是否使用 tls
 	dsn := dsnparser.Parse(address)
 	var (
 		cc  *grpc.ClientConn
 		err error
 	)
-	log.Println("地址是否有效", fmt.Sprintf("%s:%s", dsn.GetHost(), dsn.GetPort()), address)
 
 	switch dsn.GetScheme() {
 	case "http", "tcp", "":
@@ -175,6 +130,8 @@ func (m *ConnectionManager) newConnection(ctx context.Context, address string) (
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
 	case "tls", "https":
+		creds := credentials.NewTLS(m.tlscfg)
+
 		cc, err = grpc.NewClient(
 			// 协议最好使用passthrough，要不然默认的使用的是 unix
 			fmt.Sprintf("%s:%s", dsn.GetHost(), dsn.GetPort()),
@@ -188,8 +145,7 @@ func (m *ConnectionManager) newConnection(ctx context.Context, address string) (
 func (m *ConnectionManager) Close() {
 	// Close all connections
 	m.mu.Lock()
-	for address, conn := range m.conns {
-		log.Println(address)
+	for _, conn := range m.conns {
 		if err := conn.ClientConn.Close(); err != nil {
 			// Log / handle
 		}

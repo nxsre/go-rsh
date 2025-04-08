@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 )
 
 // ReverseClient is the local shell server.
@@ -44,18 +45,24 @@ func (s *ReverseClient) Dialer() func(context.Context, string) (net.Conn, error)
 // Serve starts the server.
 func (s *ReverseClient) Serve() error {
 	// 使用 multi_server_conn 注册到多个 grpc server
-	mgr := NewConnectionManager(s)
+	mgr := NewConnectionManager(s.tlsconfig)
+	wg := sync.WaitGroup{}
 	for _, addr := range strings.Split(s.address, ",") {
-		if err := mgr.Call(context.Background(), addr, tunnelRegister); err != nil {
-			log.Println("call error:", err)
-			return nil
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := mgr.Call(context.Background(), addr, tunnelRegister); err != nil {
+				log.Println("call error:", err)
+				return
+			}
+		}()
 	}
-	select {}
+	wg.Wait()
+	return nil
 
 	/*
 		// Dial the server.
-		creds := credentials.NewTLS(s.tlsconfig)
+		creds := credentials.NewTLS(s.tlscfg)
 		_ = creds
 		cc, err := grpc.NewClient(
 			// 协议最好使用passthrough，要不然默认的使用的是 unix
