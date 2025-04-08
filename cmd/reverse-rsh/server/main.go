@@ -64,6 +64,7 @@ func main() {
 	router.NoMethod(rsh.HandleNotFound)
 
 	server := rsh.NewReverseServer(router, tlscfg)
+	server.RegisterHandlers()
 
 	router.GET("/get/:deviceId", NewWeb(server))
 

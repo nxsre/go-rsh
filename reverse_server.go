@@ -28,7 +28,6 @@ func NewReverseServer(router *gin.Engine, tlscfg *tls.Config) *ReverseServer {
 		router:    router,
 		clients:   haxmap.New[string, grpc.ClientConnInterface](),
 	}
-	s.RegisterHandlers()
 	return s
 }
 
