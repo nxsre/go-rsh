@@ -95,21 +95,30 @@ func (s *session) start() error {
 					if in.CombinedOutput {
 						log.Println("DEBUG shell session combined output")
 						out, cmdErr := s.cmd.CombinedOutput()
-						if cmdErr != nil {
-							go func() { s.errC <- cmdErr }()
-							continue
+						output := &pb.Output{
+							CombinedOutput: out,
+							Exited:         true,
 						}
 
-						if err := s.stream.Send(&pb.Output{
-							CombinedOutput: out,
-						}); err != nil {
-							log.Printf("DEBUG shell session failed to send: %v", err)
-							continue
+						if cmdErr != nil {
+							if ee, ok := cmdErr.(*exec.ExitError); ok {
+								output.ExitCode = int32(ee.ExitCode())
+								s.stream.Send(output)
+								break
+							} else if ee, ok := cmdErr.(*exec.Error); ok && ee.Err == exec.ErrNotFound {
+								// 命令本身的错误不返回 error，通过 output 传递
+								return s.stream.Send(&pb.Output{ExitCode: 127, Exited: true, CombinedOutput: []byte(ee.Error())})
+							} else {
+								go func() {
+									log.Println(cmdErr)
+
+									s.errC <- cmdErr
+								}()
+							}
+							break
+						} else {
+							break
 						}
-						go func() {
-							s.cmdExitC <- 0
-						}()
-						continue
 					} else {
 						s.cmd.Stdout = stdStreamWriter{
 							s.stream,
