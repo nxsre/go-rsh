@@ -35,9 +35,10 @@ func NewClientInsecure(server string) *Client {
 
 // ExecOptions are the options for Exec.
 type ExecOptions struct {
-	Terminal bool
-	Command  string
-	Args     []string
+	Terminal       bool
+	Command        string
+	Args           []string
+	CombinedOutput bool
 }
 
 // Exec executes a command in the server.
@@ -48,7 +49,7 @@ func (c *Client) Exec(opts *ExecOptions) (*int, error) {
 // ExecContext is like Exec, but with context.
 func (c *Client) ExecContext(ctx context.Context, opts *ExecOptions) (*int, error) {
 
-	conn, err := grpc.Dial(c.server, grpc.WithTransportCredentials(c.creds))
+	conn, err := grpc.NewClient(c.server, grpc.WithTransportCredentials(c.creds))
 	if err != nil {
 		return nil, fmt.Errorf("dial: %v", err)
 	}
@@ -68,10 +69,11 @@ func (c *Client) ExecContext(ctx context.Context, opts *ExecOptions) (*int, erro
 	log.Println("DEBUG", "ExecOpts", opts)
 
 	err = stream.Send(&pb.Input{
-		Start:    true,
-		Command:  opts.Command,
-		Args:     opts.Args,
-		Terminal: opts.Terminal, // 终端交互模式
+		Start:          true,
+		Command:        opts.Command,
+		Args:           opts.Args,
+		Terminal:       opts.Terminal, // 终端交互模式
+		CombinedOutput: opts.CombinedOutput,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("send cmd: %v", err)
@@ -89,6 +91,7 @@ func (c *Client) ExecContext(ctx context.Context, opts *ExecOptions) (*int, erro
 			syscall.SIGINT,
 			syscall.SIGQUIT,
 			syscall.SIGTERM,
+			syscall.SIGCHLD,
 		)
 
 		go c.readTTY(stream.Context(), inc)
@@ -98,6 +101,19 @@ func (c *Client) ExecContext(ctx context.Context, opts *ExecOptions) (*int, erro
 		go c.writeStream(stream, inc, sigc)
 
 		sigc <- syscall.SIGWINCH
+	}
+
+	if opts.CombinedOutput {
+		output := &pb.Output{}
+		err := stream.RecvMsg(output)
+		if err != nil {
+			if err != io.EOF {
+				log.Println("WARNING: stream.RecvMsg:", err)
+			}
+		}
+		os.Stdout.Write(output.CombinedOutput)
+		var a = 0
+		return &a, nil
 	}
 
 	return c.readStream(stream)

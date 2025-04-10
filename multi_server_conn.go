@@ -10,7 +10,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/resolver"
+	"net"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -137,10 +140,40 @@ func (m *ConnectionManager) newConnection(ctx context.Context, address string) (
 			fmt.Sprintf("%s:%s", dsn.GetHost(), dsn.GetPort()),
 			grpc.WithTransportCredentials(creds),
 		)
+	case "unix":
+		creds := insecure.NewCredentials()
+		if m.tlscfg != nil {
+			creds = credentials.NewTLS(m.tlscfg)
+		}
+
+		address = strings.TrimPrefix(address, `unix://`)
+		cc, err = grpc.NewClient(
+			// 协议最好使用passthrough，要不然默认的使用的是 unix
+			fmt.Sprintf("%s", address),
+			grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+				return net.Dial("unix", address)
+			}),
+			grpc.WithResolvers(&builder{}),
+			grpc.WithTransportCredentials(creds),
+			grpc.WithAuthority("example.net"),
+		)
 	}
 
 	return cc, err
 }
+
+type builder struct{}
+
+func (*builder) Build(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
+	cc.UpdateState(resolver.State{Addresses: []resolver.Address{{Addr: target.Endpoint()}}})
+	return nil, nil
+}
+
+func (*builder) Scheme() string {
+	return ""
+}
+
+var _ resolver.Builder = (*builder)(nil)
 
 func (m *ConnectionManager) Close() {
 	// Close all connections

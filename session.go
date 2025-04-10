@@ -92,17 +92,40 @@ func (s *session) start() error {
 					log.Printf("DEBUG shell session no terminal, cmd: %s, %v", in.Command, in.Args)
 					s.cmd = exec.CommandContext(s.stream.Context(), in.Command, in.Args...)
 
-					s.cmd.Stdout = stdStreamWriter{s.stream}
-					s.cmd.Stderr = errStreamWriter{s.stream}
-
-					if err := s.cmd.Start(); err != nil {
-						if ee, ok := err.(*exec.Error); ok && ee.Err == exec.ErrNotFound {
-							// 命令本身的错误不返回 error，通过 output 传递
-							return s.stream.Send(&pb.Output{ExitCode: 127, Exited: true, Stderr: []byte(ee.Error())})
+					if in.CombinedOutput {
+						log.Println("DEBUG shell session combined output")
+						out, cmdErr := s.cmd.CombinedOutput()
+						if cmdErr != nil {
+							go func() { s.errC <- cmdErr }()
+							continue
 						}
-						return err
+
+						if err := s.stream.Send(&pb.Output{
+							CombinedOutput: out,
+						}); err != nil {
+							log.Printf("DEBUG shell session failed to send: %v", err)
+							continue
+						}
+						go func() {
+							s.cmdExitC <- 0
+						}()
+						continue
+					} else {
+						s.cmd.Stdout = stdStreamWriter{
+							s.stream,
+						}
+						s.cmd.Stderr = errStreamWriter{s.stream}
+
+						if err := s.cmd.Start(); err != nil {
+							if ee, ok := err.(*exec.Error); ok && ee.Err == exec.ErrNotFound {
+								// 命令本身的错误不返回 error，通过 output 传递
+								return s.stream.Send(&pb.Output{ExitCode: 127, Exited: true, Stderr: []byte(ee.Error())})
+							}
+							return err
+						}
+						go s.notifyOnProcessExit()
 					}
-					go s.notifyOnProcessExit()
+
 					continue
 				}
 			}
@@ -127,33 +150,35 @@ func (s *session) startCommand(ctx context.Context, command string, args []strin
 	log.Println("DEBUG", "Starting command", command, args)
 
 	s.cmd = exec.CommandContext(ctx, command, args...)
-	// 分离 stdout 和 stderr (终端交互模式似乎必要分离 out 和 err，非终端模式执行命令有必要分离，用来在客户端重定向正缺输出和异常输出)
-	errPtmx, errTty, err := pty.Open()
-	if err != nil {
-		return fmt.Errorf("open err pty: %v", err)
-	}
-
-	s.cmd.Stderr = errTty
-	s.errPtmx = errPtmx
-
 	ptmx, tty, err := pty.Open()
 	if err != nil {
 		return fmt.Errorf("open std pty: %v", err)
 	}
 	s.cmd.Stdin = tty
 	s.cmd.Stdout = tty
-	//s.cmd.Stderr = tty
+	s.cmd.Stderr = tty
 	s.ptmx = ptmx
+
+	// 分离 stdout 和 stderr (终端交互模式似乎必要分离 out 和 err，非终端模式执行命令有必要分离，用来在客户端重定向正缺输出和异常输出)
+	//errPtmx, errTty, err := pty.Open()
+	//if err != nil {
+	//	return fmt.Errorf("open err pty: %v", err)
+	//}
+	//
+	//s.cmd.Stderr = errTty
+	//s.errPtmx = errPtmx
 
 	if s.cmd.SysProcAttr == nil {
 		s.cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
+
 	// 不加 "TERM=xterm" 客户端登录会报错: "bash: cannot set terminal process group (-1): Inappropriate ioctl for device"
 	s.cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	log.Println(s.cmd.SysProcAttr)
 	//s.cmd.SysProcAttr.Setpgid = true
 	s.cmd.SysProcAttr.Setsid = true
 	s.cmd.SysProcAttr.Setctty = true
+	//s.cmd.SysProcAttr.Credential = &syscall.Credential{}
 
 	if err := s.cmd.Start(); err != nil {
 		return fmt.Errorf("start command: %v", err)
@@ -175,6 +200,9 @@ func (s *session) processInput(in *pb.Input) error {
 
 		switch sig {
 		case syscall.SIGWINCH:
+			if len(in.Bytes) < 6 {
+				return fmt.Errorf("invalid input signal: %d", in.Signal)
+			}
 			sizeParts := strings.Split(string(in.Bytes), " ")
 			size := &pty.Winsize{
 				Cols: parseUint16(sizeParts[0]),
@@ -190,6 +218,7 @@ func (s *session) processInput(in *pb.Input) error {
 			}
 
 		default:
+			log.Println("DEBUG", "signal::", in.Signal)
 			if s.cmd.Process == nil {
 				return fmt.Errorf("tried to signal nil process")
 			}

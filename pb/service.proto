@@ -3,7 +3,7 @@ syntax = "proto3";
 
 option go_package = "github.com/nxsre/go-rsh/pb;pb";
 
-package rsh;
+package kitex_rsh;
 
 service RemoteShell {
   rpc Session (stream Input) returns (stream Output) {}
@@ -14,15 +14,16 @@ message Input {
   bytes Bytes = 2;
   bool Start = 3;
   bool Terminal = 4; // 是否开启终端模式，类似 docker -t
-  string Command = 5;
-  repeated string Args = 6;
+  bool CombinedOutput = 5; // 合并 stdout 和 stderr
+  string Timeout = 6;
+  string Command = 7;
+  repeated string Args = 8;
 }
 
 message Output {
   bytes Stdout = 1;
   bytes Stderr = 2;
-  int32 ExitCode = 3;
-  bool Exited = 4; // 用于判断命令是否已结束, 因 ExitCode 为 0 是可能是 go 中的 int32 0值，也可能是命令已结束
+  bytes CombinedOutput = 3;
+  int32 ExitCode = 4;
+  bool Exited = 5; // 用于判断命令是否已结束, 因 ExitCode 为 0 是可能是 go 中的 int32 0值，也可能是命令已结束
 }
-
-

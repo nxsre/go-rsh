@@ -19,7 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion8
 
 const (
-	RemoteShell_Session_FullMethodName = "/rsh.RemoteShell/Session"
+	RemoteShell_Session_FullMethodName = "/kitex_rsh.RemoteShell/Session"
 )
 
 // RemoteShellClient is the client API for RemoteShell service.
@@ -127,7 +127,7 @@ func (x *remoteShellSessionServer) Recv() (*Input, error) {
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var RemoteShell_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "rsh.RemoteShell",
+	ServiceName: "kitex_rsh.RemoteShell",
 	HandlerType: (*RemoteShellServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{

@@ -57,9 +57,10 @@ func main() {
 	client := rsh.NewClientInsecure(fmt.Sprintf("%s:%d", *addr, *port))
 
 	opts := &rsh.ExecOptions{
-		Terminal: *terminal,
-		Command:  command,
-		Args:     args,
+		Terminal:       *terminal,
+		Command:        command,
+		Args:           args,
+		CombinedOutput: true,
 	}
 
 	exitCode, err := client.Exec(opts)

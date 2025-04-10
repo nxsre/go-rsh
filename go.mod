@@ -123,8 +123,8 @@ require (
 require (
 	github.com/creack/pty v1.1.18
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mattn/go-tty v0.0.4
-	golang.org/x/sys v0.31.0 // indirect
+	github.com/mattn/go-tty v0.0.7
+	golang.org/x/sys v0.32.0 // indirect
 	golang.org/x/term v0.30.0
 	golang.org/x/text v0.23.0
 	google.golang.org/protobuf v1.36.6
