@@ -64,7 +64,7 @@ func main() {
 	}
 
 	for _, ctr := range ctrs {
-		log.Println(ctr.GetId())
+		slog.Info(ctr.GetId())
 	}
 
 	// ------

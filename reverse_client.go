@@ -4,7 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
+	"github.com/jhump/grpctunnel"
+	"log/slog"
 	"net"
 	"strings"
 	"sync"
@@ -12,17 +13,19 @@ import (
 
 // ReverseClient is the local shell server.
 type ReverseClient struct {
-	address   string
-	shell     string
-	tlsconfig *tls.Config
+	address       string
+	shell         string
+	tlsconfig     *tls.Config
+	channelServer *grpctunnel.ReverseTunnelServer
 }
 
 // NewReverseClient creates a new local shell client.
-func NewReverseClient(address string, shell string, tlcfg *tls.Config) *ReverseClient {
+func NewReverseClient(address string, shell string, tlcfg *tls.Config, channelServer *grpctunnel.ReverseTunnelServer) *ReverseClient {
 	return &ReverseClient{
-		address:   address,
-		shell:     shell,
-		tlsconfig: tlcfg,
+		address:       address,
+		shell:         shell,
+		tlsconfig:     tlcfg,
+		channelServer: channelServer,
 	}
 }
 
@@ -34,7 +37,7 @@ func (s *ReverseClient) Dialer() func(context.Context, string) (net.Conn, error)
 		// grpc 的 tls 连接是在 NewClient 时 grpc.WithTransportCredentials 配置的，dial 只返回 tcp 连接即可
 		dialer, err := net.Dial("tcp", s.address)
 		if err != nil {
-			log.Println("dialer error:", err)
+			slog.Info("dialer error:", slog.Any("error", err))
 			return nil, err
 		}
 		// 建立连接成功
@@ -44,19 +47,38 @@ func (s *ReverseClient) Dialer() func(context.Context, string) (net.Conn, error)
 
 // Serve starts the server.
 func (s *ReverseClient) Serve() error {
-	// 使用 multi_server_conn 注册到多个 grpc server
-	mgr := NewConnectionManager(s.tlsconfig)
 	wg := sync.WaitGroup{}
-	for _, addr := range strings.Split(s.address, ",") {
+	if s.channelServer != nil {
 		wg.Add(1)
-		go func() {
+		func() {
 			defer wg.Done()
-			if err := mgr.Call(context.Background(), addr, tunnelRegister); err != nil {
-				log.Println("call error:", err)
+			if err := tunnelRegister(context.Background(), nil, s.channelServer); err != nil {
+				slog.Info("tunnelRegister error:", slog.Any("error", err))
 				return
 			}
 		}()
+	} else {
+		// 使用 multi_server_conn 注册到多个 grpc server
+		mgr := NewConnectionManager(s.tlsconfig)
+
+		for _, addr := range strings.Split(s.address, ",") {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				conn, err := mgr.Connect(context.Background(), addr)
+				if err != nil {
+					slog.Info("Connect error:", slog.Any("error", err))
+					return
+				}
+
+				if err := tunnelRegister(context.Background(), conn, nil); err != nil {
+					slog.Info("tunnelRegister error:", slog.Any("error", err))
+					return
+				}
+			}()
+		}
 	}
+
 	wg.Wait()
 	return nil
 
@@ -84,7 +106,7 @@ func (s *ReverseClient) Serve() error {
 		// 注册 api
 		pb.RegisterRemoteShellServer(channelServer, newRSHServer(s.shell))
 
-		log.Println("Starting Client")
+		slog.Info("Starting Client")
 		// Create metadata and context.
 		md := metadata.Pairs("client-id", "")
 		ctx := metadata.NewOutgoingContext(context.Background(), md)

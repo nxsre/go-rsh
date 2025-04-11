@@ -6,6 +6,7 @@ import (
 	"github.com/nxsre/go-rsh/pb"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -51,11 +52,10 @@ func (s *session) start() error {
 		select {
 
 		case <-s.stream.Context().Done():
-			log.Println("DEBUG", "stream context done")
+			slog.Info("stream context done")
 			return nil
 
 		case exitCode := <-s.cmdExitC:
-			log.Println("DEBUG", "Command exited with code", exitCode)
 			s.ptmx.Close()
 			s.errPtmx.Close()
 
@@ -75,7 +75,7 @@ func (s *session) start() error {
 			if in.Start {
 				s.terminal = in.Terminal
 				if s.terminal {
-					log.Println("DEBUG", "shell session use terminal")
+					slog.Info("shell session use terminal")
 					if err := s.startCommand(s.stream.Context(), in.Command, in.Args); err != nil {
 						return fmt.Errorf("start command: %v", err)
 					}
@@ -93,7 +93,7 @@ func (s *session) start() error {
 					s.cmd = exec.CommandContext(s.stream.Context(), in.Command, in.Args...)
 
 					if in.CombinedOutput {
-						log.Println("DEBUG shell session combined output")
+						slog.Info("DEBUG shell session combined output")
 						out, cmdErr := s.cmd.CombinedOutput()
 						output := &pb.Output{
 							CombinedOutput: out,
@@ -110,7 +110,7 @@ func (s *session) start() error {
 								return s.stream.Send(&pb.Output{ExitCode: 127, Exited: true, CombinedOutput: []byte(ee.Error())})
 							} else {
 								go func() {
-									log.Println(cmdErr)
+									slog.Info(cmdErr.Error())
 
 									s.errC <- cmdErr
 								}()
@@ -156,7 +156,7 @@ func (s *session) startCommand(ctx context.Context, command string, args []strin
 		args = s.defaultArgs
 	}
 
-	log.Println("DEBUG", "Starting command", command, args)
+	slog.Info("Starting command", command, args)
 
 	s.cmd = exec.CommandContext(ctx, command, args...)
 	ptmx, tty, err := pty.Open()
@@ -183,7 +183,6 @@ func (s *session) startCommand(ctx context.Context, command string, args []strin
 
 	// 不加 "TERM=xterm" 客户端登录会报错: "bash: cannot set terminal process group (-1): Inappropriate ioctl for device"
 	s.cmd.Env = append(os.Environ(), "TERM=xterm-256color")
-	log.Println(s.cmd.SysProcAttr)
 	//s.cmd.SysProcAttr.Setpgid = true
 	s.cmd.SysProcAttr.Setsid = true
 	s.cmd.SysProcAttr.Setctty = true
@@ -192,8 +191,6 @@ func (s *session) startCommand(ctx context.Context, command string, args []strin
 	if err := s.cmd.Start(); err != nil {
 		return fmt.Errorf("start command: %v", err)
 	}
-
-	log.Println("DEBUG", s.cmd.Process, s.cmd.ProcessState)
 
 	return nil
 }
@@ -220,14 +217,11 @@ func (s *session) processInput(in *pb.Input) error {
 				Y:    parseUint16(sizeParts[3]),
 			}
 
-			log.Println("DEBUG", "Setting window size to", size)
-
 			if err := pty.Setsize(s.ptmx, size); err != nil {
 				return fmt.Errorf("setsize: %v", err)
 			}
 
 		default:
-			log.Println("DEBUG", "signal::", in.Signal)
 			if s.cmd.Process == nil {
 				return fmt.Errorf("tried to signal nil process")
 			}
@@ -259,7 +253,7 @@ func (s *session) consumeStream() {
 }
 
 func (s *session) notifyOnProcessExit() {
-	log.Println("DEBUG", "Waiting for process completion")
+	slog.Info("Waiting for process completion")
 
 	if s.cmd.Err != nil {
 		s.errC <- fmt.Errorf("cmd err: %v", s.cmd.Err)
@@ -267,7 +261,7 @@ func (s *session) notifyOnProcessExit() {
 	}
 	if s.cmd.Process != nil {
 		ps, err := s.cmd.Process.Wait()
-		log.Println("DEBUG", "Process completed", ps, err)
+		slog.Info("Process completed", slog.Any("process", ps), slog.Any("err", err))
 
 		if err != nil {
 			s.errC <- fmt.Errorf("cmd wait: %v", err)

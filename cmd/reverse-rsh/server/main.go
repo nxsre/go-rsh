@@ -84,10 +84,10 @@ func main() {
 
 func NewWeb(server *rsh.ReverseServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log.Println("deviceID:::", c.Param("deviceId"))
+		slog.Info("deviceID:::", c.Param("deviceId"))
 		channel := server.GetClient(c.Param("deviceId"))
 		if channel == nil {
-			log.Println("channel not found")
+			slog.Info("channel not found")
 			rsh.NewResult(c).ErrorCode(404, "资源未找到", nil)
 			return
 		}
@@ -122,7 +122,7 @@ func NewWeb(server *rsh.ReverseServer) gin.HandlerFunc {
 			return
 		}
 
-		log.Println("DEBUG", "ExecOpts", opts)
+		slog.Info("ExecOpts", opts)
 
 		err = stream.Send(&pb.Input{
 			Start:   true,

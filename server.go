@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"github.com/nxsre/go-rsh/pb"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
-	"log"
+	"log/slog"
 	"net"
 	"os/exec"
 )
@@ -51,18 +50,16 @@ func newRSHServer(shell string) *rshServer {
 }
 
 func (s *rshServer) Session(stream pb.RemoteShell_SessionServer) error {
-	log.Println("Opening session")
-	log.Println(metadata.FromIncomingContext(stream.Context()))
+	slog.Info("Opening session")
 	sess := newSession(stream, s.shell, nil)
 	if err := sess.start(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			log.Println(exitErr.Stderr, exitErr.ExitCode())
+			_ = exitErr
+		} else {
+			slog.Info("执行命令出错", slog.Any("err", err))
 		}
-		log.Println("XXXXX---", err)
 		return err
 	}
-
-	log.Println("Session closed")
-
+	slog.Info("Session closed")
 	return nil
 }

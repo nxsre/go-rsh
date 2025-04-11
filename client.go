@@ -6,6 +6,7 @@ import (
 	"github.com/nxsre/go-rsh/pb"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -66,8 +67,6 @@ func (c *Client) ExecContext(ctx context.Context, opts *ExecOptions) (*int, erro
 		opts = &ExecOptions{}
 	}
 
-	log.Println("DEBUG", "ExecOpts", opts)
-
 	err = stream.Send(&pb.Input{
 		Start:          true,
 		Command:        opts.Command,
@@ -108,7 +107,7 @@ func (c *Client) ExecContext(ctx context.Context, opts *ExecOptions) (*int, erro
 		err := stream.RecvMsg(output)
 		if err != nil {
 			if err != io.EOF {
-				log.Println("WARNING: stream.RecvMsg:", err)
+				slog.Info("WARNING: stream.RecvMsg:", slog.Any("err", err))
 			}
 		}
 		os.Stdout.Write(output.CombinedOutput)
@@ -142,7 +141,7 @@ func (c *Client) readTTY(ctx context.Context, inc chan<- rune) {
 	}()
 
 	<-ctx.Done()
-	log.Println("DEBUG", "Exiting readTTY")
+	slog.Info("Exiting readTTY")
 	close(inc)
 	return
 }
@@ -154,23 +153,23 @@ func (c *Client) restoreTTY() {
 
 	err := term.Restore(int(os.Stdin.Fd()), c.ttyState)
 	if err != nil {
-		log.Println("Error restoring old terminal state:", err)
+		slog.Info("Error restoring old terminal state:", slog.Any("err", err))
 	}
 
-	log.Println("DEBUG", "Restored old terminal state,", c.ttyState)
+	slog.Info("Restored old terminal state")
 }
 
 func (c *Client) readStream(stream pb.RemoteShell_SessionClient) (*int, error) {
 	for {
 		select {
 		case <-stream.Context().Done():
-			log.Println("Client stream context done")
+			slog.Info("Client stream context done")
 			return nil, nil
 
 		default:
 			out, err := stream.Recv()
 			if err == io.EOF {
-				log.Print("Server returned EOF")
+				slog.Info("Server returned EOF")
 				return nil, nil
 			}
 
@@ -206,7 +205,6 @@ func (c *Client) writeStream(stream pb.RemoteShell_SessionClient, inc <-chan run
 
 			s, ok := sig.(syscall.Signal)
 			if !ok {
-				log.Println("Error forwarding signal: os.Signal is not syscall.Signal, signal:", sig.String())
 				break
 			}
 

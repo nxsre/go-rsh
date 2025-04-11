@@ -41,7 +41,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	server := rsh.NewReverseClient(*addr, *shell, tlscfg)
+	server := rsh.NewReverseClient(*addr, *shell, tlscfg, nil)
 	if err := server.Serve(); err != nil {
 		log.Fatalf("Serve: %v", err)
 	}

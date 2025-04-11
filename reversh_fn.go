@@ -12,17 +12,19 @@ import (
 	"time"
 )
 
-func tunnelRegister(ctx context.Context, conn *Connection) error {
+func tunnelRegister(ctx context.Context, conn *Connection, channelServer *grpctunnel.ReverseTunnelServer) error {
 	// 注册反向隧道，对 grpc server 端提供服务.
-	tunnelStub := tunnelpb.NewTunnelServiceClient(conn)
-	channelServer := grpctunnel.NewReverseTunnelServer(tunnelStub)
+	if channelServer == nil {
+		tunnelStub := tunnelpb.NewTunnelServiceClient(conn)
+		channelServer = grpctunnel.NewReverseTunnelServer(tunnelStub)
+	}
 
 	// 注册 api
 	pb.RegisterRemoteShellServer(channelServer, newRSHServer("/bin/sh"))
 
 	klog.Infoln("Starting Client")
 	// Create metadata and context.
-	md := metadata.Pairs("client-id", GetNodeID())
+	md := metadata.Pairs("client-id", GetNodeID(), "service", "rsh")
 	ctx = metadata.NewOutgoingContext(context.Background(), md)
 
 	// Open the reverse tunnel and serve requests.

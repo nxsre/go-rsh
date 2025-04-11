@@ -3,7 +3,6 @@ package rsh
 import (
 	"crypto/tls"
 	"github.com/alphadose/haxmap"
-	"github.com/bytedance/gopkg/cloud/metainfo"
 	"github.com/gin-gonic/gin"
 	"github.com/jhump/grpctunnel"
 	"github.com/jhump/grpctunnel/tunnelpb"
@@ -11,7 +10,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
-	"log"
+	"log/slog"
 	"strings"
 )
 
@@ -32,9 +31,9 @@ func NewReverseServer(router *gin.Engine, tlscfg *tls.Config) *ReverseServer {
 }
 
 func (s *ReverseServer) GetClient(id string) grpc.ClientConnInterface {
-	for k, v := range s.clients.Iterator() {
-		log.Println(k, v)
-	}
+	//for k, v := range s.clients.Iterator() {
+	//	log.Println(k, v)
+	//}
 	conn, ok := s.clients.Get(id)
 	if !ok {
 		return nil
@@ -43,11 +42,11 @@ func (s *ReverseServer) GetClient(id string) grpc.ClientConnInterface {
 }
 
 func (s *ReverseServer) RegisterHandlers() {
-	log.Println("server started")
+	slog.Info("server started")
 	handler := grpctunnel.NewTunnelServiceHandler(
 		grpctunnel.TunnelServiceHandlerOptions{
 			OnReverseTunnelOpen: func(channel grpctunnel.TunnelChannel) {
-				log.Println("tunnel opened,new client connect...")
+				slog.Info("tunnel opened,new client connect...")
 				// 获取客户端信息,身份验证阶段
 				peerInfo, ok := peer.FromContext(channel.Context())
 				if ok && peerInfo.AuthInfo != nil {
@@ -55,7 +54,7 @@ func (s *ReverseServer) RegisterHandlers() {
 					for _, v := range tlsInfo.State.PeerCertificates {
 						//fmt.Println("Client: Server public key is:")
 						//fmt.Println(x509.MarshalPKIXPublicKey(v.PublicKey))
-						log.Println("client cert cn:", v.Subject.CommonName)
+						slog.Info("client cert cn:", slog.String("cn", v.Subject.CommonName))
 						if v.Subject.CommonName != "root" {
 							channel.Close()
 							return
@@ -63,30 +62,26 @@ func (s *ReverseServer) RegisterHandlers() {
 					}
 				}
 
-				log.Println(metainfo.GetAllValues(channel.Context()))
-				log.Println("New Tunnel Opened", peerInfo.String(), ok)
+				slog.Info("New Tunnel Opened", peerInfo.String(), ok)
 				md, ok := metadata.FromIncomingContext(channel.Context())
-				log.Println("New Tunnel Metadata", md, ok)
+				slog.Info("New Tunnel Metadata", slog.Any("metadata", md), slog.Bool("ok", ok))
 
 				if k := md.Get("rpc-transit-client-id"); len(k) > 0 {
-					log.Println("PROXY --- 新客户端:", k)
 					s.clients.Set(k[0], channel)
 				}
 				if k := md.Get("client-id"); len(k) > 0 {
-					log.Println("新客户端:", k)
+					slog.Info("新客户端:", slog.Any("k", k), slog.Any("md", md))
 					s.clients.Set(k[0], channel)
 				}
 			},
 			OnReverseTunnelClose: func(channel grpctunnel.TunnelChannel) {
-				log.Println("Tunnel Closed")
+				slog.Info("Tunnel Closed")
 				// 获取客户端信息,身份验证阶段
 				peer, ok := peer.FromContext(channel.Context())
 				if ok {
-
+					slog.Info("Tunnel Closed", slog.String("peer", peer.Addr.String()))
 				}
-				log.Println("### Tunnel Closed", peer.String(), ok)
 				md, ok := metadata.FromIncomingContext(channel.Context())
-				log.Println("### Tunnel Metadata", md, ok)
 
 				if k := md.Get("client-id"); len(k) > 0 {
 					s.clients.Del(k[0])
@@ -104,12 +99,11 @@ func (s *ReverseServer) RegisterHandlers() {
 
 	tunnelGroup.Any("/*name", func(c *gin.Context) {
 		_ = c.Param("name")
-		log.Println("请求路径:", c.Request.URL)
 		// 判断是否 grpc 请求，如果是 grpc 请求，由 grpc server 处理
 		if c.Request.ProtoMajor == 2 && strings.Contains(c.Request.Header.Get("Content-Type"), "application/grpc") {
 			svr.ServeHTTP(c.Writer, c.Request)
 		} else {
-			log.Println("aaaa")
+			slog.Info("aaaa")
 		}
 	})
 }
