@@ -10,7 +10,9 @@ import (
 	"github.com/sirupsen/logrus"
 	internalapi "k8s.io/cri-api/pkg/apis"
 	pb "k8s.io/cri-api/pkg/apis/runtime/v1"
-	"k8s.io/kubelet/pkg/types"
+	"k8s.io/kubernetes/pkg/kubelet/types"
+
+	//"k8s.io/kubelet/pkg/types"
 	"log"
 	goruntime "runtime"
 	"sigs.k8s.io/cri-tools/pkg/framework"
