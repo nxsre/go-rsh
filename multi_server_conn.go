@@ -155,7 +155,7 @@ func (m *ConnectionManager) newConnection(ctx context.Context, address string) (
 			}),
 			grpc.WithResolvers(&builder{}),
 			grpc.WithTransportCredentials(creds),
-			grpc.WithAuthority("example.net"),
+			grpc.WithAuthority(m.tlscfg.ServerName),
 		)
 	}
 
