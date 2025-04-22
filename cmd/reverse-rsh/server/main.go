@@ -12,17 +12,20 @@ import (
 	"github.com/nxsre/go-rsh/pb"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"os"
+	"strings"
 	"time"
 )
 
 var (
-	port   = flag.Uint("p", 22222, "server port")
-	addr   = flag.String("a", "127.0.0.1", "server address")
-	cacert = flag.String("ca", "./certs/ca.pem", "ca certificate file")
-	cert   = flag.String("cert", "./certs/server.pem", "server certificate file")
-	key    = flag.String("key", "./certs/server-key.pem", "server key file")
+	port         = flag.Uint("p", 22222, "server port")
+	addr         = flag.String("a", "127.0.0.1", "server address")
+	cacert       = flag.String("ca", "./certs/ca.pem", "ca certificate file")
+	cert         = flag.String("cert", "./certs/server.pem", "server certificate file")
+	key          = flag.String("key", "./certs/server-key.pem", "server key file")
+	allowClients = flag.String("allow-clients", "root", "allow clients to connect")
 )
 
 func parseArgs() {
@@ -63,7 +66,7 @@ func main() {
 	router.NoRoute(rsh.HandleNotFound)
 	router.NoMethod(rsh.HandleNotFound)
 
-	server := rsh.NewReverseServer(router, tlscfg)
+	server := rsh.NewReverseServer(router, tlscfg, strings.Split(*allowClients, ","))
 	server.RegisterHandlers()
 
 	router.GET("/get/:deviceId", NewWeb(server))

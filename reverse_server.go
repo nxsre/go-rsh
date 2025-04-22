@@ -15,17 +15,19 @@ import (
 )
 
 type ReverseServer struct {
-	tlsconfig *tls.Config
-	clients   *haxmap.Map[string, grpc.ClientConnInterface]
-	router    *gin.Engine
+	tlsconfig    *tls.Config
+	clients      *haxmap.Map[string, grpc.ClientConnInterface]
+	allowClients []string
+	router       *gin.Engine
 }
 
 // Reverse client. 集成在客户端的反向 shell(用于 grpc server 端调用 agent 侧 shell)
-func NewReverseServer(router *gin.Engine, tlscfg *tls.Config) *ReverseServer {
+func NewReverseServer(router *gin.Engine, tlscfg *tls.Config, allowClients []string) *ReverseServer {
 	s := &ReverseServer{
-		tlsconfig: tlscfg,
-		router:    router,
-		clients:   haxmap.New[string, grpc.ClientConnInterface](),
+		tlsconfig:    tlscfg,
+		router:       router,
+		clients:      haxmap.New[string, grpc.ClientConnInterface](),
+		allowClients: allowClients,
 	}
 	return s
 }
@@ -39,6 +41,15 @@ func (s *ReverseServer) GetClient(id string) grpc.ClientConnInterface {
 		return nil
 	}
 	return conn
+}
+
+func contains[T comparable](elems []T, v T) bool {
+	for _, s := range elems {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *ReverseServer) RegisterHandlers() {
@@ -55,7 +66,8 @@ func (s *ReverseServer) RegisterHandlers() {
 						//fmt.Println("Client: Server public key is:")
 						//fmt.Println(x509.MarshalPKIXPublicKey(v.PublicKey))
 						slog.Info("client cert cn:", slog.String("cn", v.Subject.CommonName))
-						if v.Subject.CommonName != "root" {
+						if !contains(s.allowClients, v.Subject.CommonName) {
+							slog.Info("非法 agent", v.Subject.CommonName)
 							channel.Close()
 							return
 						}
